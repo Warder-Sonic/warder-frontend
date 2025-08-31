@@ -1,0 +1,154 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
+All colors MUST be HSL.
+*/
+
+@layer base {
+  :root {
+    /* Dark theme with lighter background - not too black */
+    --background: 0 0% 15%;          /* Lighter dark background instead of very dark */
+    --foreground: 0 0% 98%;         /* White text */
+    
+    /* Sonic Official Colors */
+    --sonic-white: 0 0% 98%;         /* Pure white for text */
+    --sonic-hero-orange: 20 100% 64%;  /* #FF924C */
+    --sonic-hero-yellow: 42 100% 70%;  /* #FFC867 */
+    --sonic-light-shade: 48 100% 95%;  /* #FFF9E5 */
+    --sonic-shade-01: 210 60% 13%;     /* #0C283C */
+    --sonic-shade-02: 186 47% 33%;     /* #306F79 */
+    --sonic-shade-03: 222 52% 37%;     /* #2F4B8F */
+    --sonic-black: 0 0% 10%;           /* #1A1A1A */
+
+    /* Dark card backgrounds with subtle borders */
+    --card: 0 0% 18%;                 /* Slightly lighter than background for cards */
+    --card-foreground: 0 0% 98%;       /* White text on cards */
+
+    --popover: 0 0% 12%;
+    --popover-foreground: 0 0% 98%;
+
+    /* Blue primary matching the website gradients */
+    --primary: 222 52% 55%;            /* Brighter blue for primary actions */
+    --primary-foreground: 0 0% 98%;
+
+    /* Orange secondary matching the website */
+    --secondary: 20 100% 64%;          /* Hero Orange #FF924C */
+    --secondary-foreground: 0 0% 98%;
+
+    /* Muted areas matching the dark theme */
+    --muted: 0 0% 20%;                 /* Muted background areas */
+    --muted-foreground: 0 0% 65%;      /* Muted text */
+
+    /* Yellow accent matching the website */
+    --accent: 42 100% 70%;             /* Hero Yellow #FFC867 */
+    --accent-foreground: 0 0% 10%;     /* Dark text on yellow */
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+
+    /* Dark theme borders and inputs */
+    --border: 0 0% 25%;                /* Subtle border */
+    --input: 0 0% 20%;                 /* Input backgrounds */
+    --ring: 222 52% 55%;               /* Blue focus rings */
+    
+    /* Official Sonic Gradients - Updated with exact colors from design */
+    --gradient-sonic-primary: linear-gradient(259deg, #214E81 0%, #506179 22.22%, #ED5409 65.15%, #FFCB67 100%);
+    --gradient-sonic-hero: linear-gradient(259deg, #214E81 0%, #506179 22.22%, #ED5409 65.15%, #FFCB67 100%);
+    --gradient-sonic-card: linear-gradient(259deg, #214E81 0%, #506179 22.22%, #ED5409 65.15%, #FFCB67 100%);
+    --gradient-sonic-dark: linear-gradient(259deg, #214E81 0%, #506179 22.22%, #ED5409 65.15%, #FFCB67 100%);
+    --gradient-feature-card: linear-gradient(259deg, #214E81 0%, #506179 22.22%, #ED5409 65.15%, #FFCB67 100%);
+    
+    /* Effects */
+    --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    --shadow-sonic: 0 0 40px hsl(222 52% 55% / 0.3);
+    --shadow-card: 0 8px 32px hsl(0 0% 0% / 0.5);
+    --shadow-glow: 0 0 20px hsl(20 100% 64% / 0.3);
+
+    --radius: 0.5rem;
+
+    --sidebar-background: 0 0% 98%;
+
+    --sidebar-foreground: 240 5.3% 26.1%;
+
+    --sidebar-primary: 240 5.9% 10%;
+
+    --sidebar-primary-foreground: 0 0% 98%;
+
+    --sidebar-accent: 240 4.8% 95.9%;
+
+    --sidebar-accent-foreground: 240 5.9% 10%;
+
+    --sidebar-border: 220 13% 91%;
+
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+
+  .dark {
+    /* Dark mode already defined in root */
+
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans;
+    background: hsl(var(--background));
+  }
+}
+
+@layer utilities {
+  .bg-gradient-sonic-primary {
+    background: var(--gradient-sonic-primary);
+    box-shadow: var(--shadow-card);
+  }
+  
+  .bg-gradient-sonic-hero {
+    background: var(--gradient-sonic-hero);
+    box-shadow: var(--shadow-glow);
+  }
+  
+  .bg-gradient-sonic-card {
+    background: var(--gradient-sonic-card);
+    box-shadow: var(--shadow-card);
+  }
+  
+  .bg-gradient-sonic-dark {
+    background: var(--gradient-sonic-dark);
+  }
+  
+  .bg-gradient-feature-card {
+    background: var(--gradient-feature-card);
+    box-shadow: var(--shadow-card);
+  }
+  
+  .shadow-sonic {
+    box-shadow: var(--shadow-sonic);
+  }
+  
+  .shadow-glow {
+    box-shadow: var(--shadow-glow);
+  }
+  
+  .transition-smooth {
+    transition: var(--transition-smooth);
+  }
+  
+  .text-sonic-hero-orange {
+    color: hsl(20 100% 64%);
+  }
+  
+  .text-sonic-hero-yellow {
+    color: hsl(42 100% 70%);
+  }
+  
+  .border-gradient {
+    border: 1px solid;
+    border-image: var(--gradient-sonic-primary) 1;
+  }
+}
