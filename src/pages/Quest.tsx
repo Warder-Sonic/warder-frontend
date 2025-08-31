@@ -1,11 +1,12 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { Trophy, Play, CheckCircle, Lock, Coins, BookOpen, Zap } from 'lucide-react';
+import { Trophy, Play, CheckCircle, Lock, Coins, BookOpen, Zap, ExternalLink } from 'lucide-react';
+import { questsAPI } from '@/lib/questsApi';
 
-const quests = [
+const legacyQuests = [
   {
     id: 1,
     title: 'Degen Express Launch',
@@ -18,50 +19,6 @@ const quests = [
   },
   {
     id: 2,
-    title: 'SpinDash Predictions',
-    description: 'Create or bet on prediction markets for sports & crypto',
-    reward: 75,
-    duration: '15 min',
-    completed: false,
-    unlocked: true,
-    category: 'GambleFi',
-    icon: Zap,
-  },
-  {
-    id: 3,
-    title: 'Navigator Exchange Trading',
-    description: 'High-leverage trading on crypto, forex & commodities',
-    reward: 100,
-    duration: '20 min',
-    completed: false,
-    unlocked: true,
-    category: 'DeFi',
-    icon: Coins,
-  },
-  {
-    id: 4,
-    title: 'Sonic Ecosystem Explorer',
-    description: 'Explore and interact with 50+ Sonic apps',
-    reward: 125,
-    duration: '30 min',
-    completed: false,
-    unlocked: true,
-    category: 'Discovery',
-    icon: Trophy,
-  },
-  {
-    id: 5,
-    title: 'Points Master Challenge',
-    description: 'Earn 1000+ points across different Sonic applications',
-    reward: 200,
-    duration: '45 min',
-    completed: false,
-    unlocked: false,
-    category: 'Advanced',
-    icon: BookOpen,
-  },
-  {
-    id: 6,
     title: 'Campus Payment Pro',
     description: 'Complete 25 campus transactions using SonicPay',
     reward: 80,
@@ -75,10 +32,28 @@ const quests = [
 
 export default function Quest() {
   const [selectedQuest, setSelectedQuest] = useState<number | null>(null);
+  const [sonicQuests, setSonicQuests] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
   
-  const totalEarned = quests.filter(q => q.completed).reduce((sum, q) => sum + q.reward, 0);
-  const totalPossible = quests.reduce((sum, q) => sum + q.reward, 0);
-  const progress = (totalEarned / totalPossible) * 100;
+  useEffect(() => {
+    const loadQuests = async () => {
+      try {
+        const rawQuests = await questsAPI.getQuests();
+        const formattedQuests = rawQuests.map((quest, index) => questsAPI.questToLegacyFormat(quest, index + 100));
+        setSonicQuests(formattedQuests);
+      } catch (error) {
+        console.error('Failed to load quests:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadQuests();
+  }, []);
+
+  const allQuests = [...legacyQuests, ...sonicQuests];
+  const totalEarned = allQuests.filter(q => q.completed).reduce((sum, q) => sum + q.reward, 0);
+  const totalPossible = allQuests.reduce((sum, q) => sum + q.reward, 0);
+  const progress = totalPossible > 0 ? (totalEarned / totalPossible) * 100 : 0;
 
   const getCategoryColor = (category: string) => {
     switch (category) {
@@ -92,15 +67,46 @@ export default function Quest() {
     }
   };
 
+  const handleQuestClick = (quest: any) => {
+    if (quest.externalUrl) {
+      window.open(quest.externalUrl, '_blank');
+    } else if (quest.unlocked !== false) {
+      setSelectedQuest(quest.id);
+    }
+  };
+
+  const getIcon = (iconName: string | any) => {
+    if (typeof iconName === 'string') {
+      switch (iconName) {
+        case 'Trophy': return Trophy;
+        case 'Coins': return Coins;
+        case 'Zap': return Zap;
+        case 'BookOpen': return BookOpen;
+        case 'Play': return Play;
+        default: return Trophy;
+      }
+    }
+    return iconName;
+  };
+
+  if (loading) {
+    return (
+      <div className="p-4 space-y-6">
+        <div className="text-center space-y-2 pt-4">
+          <h1 className="text-2xl font-bold">Quest</h1>
+          <p className="text-muted-foreground">Loading Sonic ecosystem quests...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="p-4 space-y-6">
-      {/* Header */}
       <div className="text-center space-y-2 pt-4">
         <h1 className="text-2xl font-bold">Quest</h1>
         <p className="text-muted-foreground">Learn about Sonic and earn S tokens</p>
       </div>
 
-      {/* Progress Card */}
       <Card className="bg-gradient-sonic-primary p-6 text-white">
         <div className="space-y-4">
           <div className="flex items-center justify-between">
@@ -121,74 +127,84 @@ export default function Quest() {
         </div>
       </Card>
 
-      {/* Quest List */}
       <div className="space-y-4">
         <h2 className="text-lg font-semibold">Available Quests</h2>
         
-        {quests.map((quest) => (
-          <Card 
-            key={quest.id} 
-            className={`bg-gradient-sonic-primary p-4 text-white transition-smooth ${
-              quest.unlocked || quest.completed ? 'cursor-pointer hover:opacity-90' : 'opacity-60'
-            }`}
-            onClick={() => quest.unlocked && setSelectedQuest(quest.id)}
-          >
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3 flex-1">
-                <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
-                  quest.completed 
-                    ? 'bg-green-500/20' 
-                    : quest.unlocked 
-                      ? 'bg-white/20' 
-                      : 'bg-white/10'
-                }`}>
-                  {quest.completed ? (
-                    <CheckCircle className="w-6 h-6 text-green-400" />
-                  ) : quest.unlocked ? (
-                    <quest.icon className="w-6 h-6 text-white" />
-                  ) : (
-                    <Lock className="w-6 h-6 text-white/60" />
-                  )}
+        {allQuests.map((quest) => {
+          const IconComponent = getIcon(quest.icon);
+          return (
+            <Card 
+              key={quest.id} 
+              className={`bg-gradient-sonic-primary p-4 text-white transition-smooth ${
+                quest.unlocked !== false ? 'cursor-pointer hover:opacity-90' : 'opacity-60'
+              }`}
+              onClick={() => handleQuestClick(quest)}
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3 flex-1">
+                  <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
+                    quest.completed 
+                      ? 'bg-green-500/20' 
+                      : quest.unlocked !== false
+                        ? 'bg-white/20' 
+                        : 'bg-white/10'
+                  }`}>
+                    {quest.completed ? (
+                      <CheckCircle className="w-6 h-6 text-green-400" />
+                    ) : quest.unlocked !== false ? (
+                      <IconComponent className="w-6 h-6 text-white" />
+                    ) : (
+                      <Lock className="w-6 h-6 text-white/60" />
+                    )}
+                  </div>
+                  
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <h3 className="font-medium text-white">{quest.title}</h3>
+                      <Badge variant="outline" className={`text-xs ${getCategoryColor(quest.category)}`}>
+                        {quest.category}
+                      </Badge>
+                    </div>
+                    <p className="text-sm text-white/70">{quest.description}</p>
+                    <p className="text-xs text-white/60 mt-1">{quest.duration}</p>
+                  </div>
                 </div>
                 
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-1">
-                    <h3 className="font-medium text-white">{quest.title}</h3>
-                    <Badge variant="outline" className={`text-xs ${getCategoryColor(quest.category)}`}>
-                      {quest.category}
-                    </Badge>
+                <div className="text-right">
+                  <div className="flex items-center gap-1 text-accent">
+                    <Coins className="w-4 h-4" />
+                    <span className="font-semibold">{quest.reward} S</span>
                   </div>
-                  <p className="text-sm text-white/70">{quest.description}</p>
-                  <p className="text-xs text-white/60 mt-1">{quest.duration}</p>
+                  {quest.completed ? (
+                    <Badge variant="default" className="bg-green-500 hover:bg-green-600 mt-2">
+                      Completed
+                    </Badge>
+                  ) : quest.unlocked !== false ? (
+                    <Button size="sm" className="mt-2 bg-secondary hover:bg-secondary/80 text-white">
+                      {quest.externalUrl ? (
+                        <>
+                          <ExternalLink className="w-3 h-3 mr-1" />
+                          Visit
+                        </>
+                      ) : (
+                        <>
+                          <Play className="w-3 h-3 mr-1" />
+                          Start
+                        </>
+                      )}
+                    </Button>
+                  ) : (
+                    <Badge variant="outline" className="mt-2 text-white/60 border-white/30">
+                      Locked
+                    </Badge>
+                  )}
                 </div>
               </div>
-              
-              <div className="text-right">
-                <div className="flex items-center gap-1 text-accent">
-                  <Coins className="w-4 h-4" />
-                  <span className="font-semibold">{quest.reward} S</span>
-                </div>
-                {quest.completed ? (
-                  <Badge variant="default" className="bg-green-500 hover:bg-green-600 mt-2">
-                    Completed
-                  </Badge>
-                ) : quest.unlocked ? (
-                  <Button size="sm" className="mt-2 bg-secondary hover:bg-secondary/80 text-white">
-                    <Play className="w-3 h-3 mr-1" />
-                    Start
-                  </Button>
-                ) : (
-                  <Badge variant="outline" className="mt-2 text-white/60 border-white/30">
-                    Locked
-                  </Badge>
-                )}
-              </div>
-            </div>
-          </Card>
-        ))}
+            </Card>
+          );
+        })}
       </div>
 
-      {/* Upcoming Quests Teaser */}
       <Card className="bg-gradient-sonic-primary p-6 text-center text-white">
         <Trophy className="w-12 h-12 text-accent mx-auto mb-3" />
         <h3 className="text-lg font-semibold mb-2 text-white">More Quests Coming Soon!</h3>
