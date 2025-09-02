@@ -6,6 +6,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Calendar, Clock, Coins, Receipt, CheckCircle, AlertCircle, Zap, ArrowRight, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useTransactions, useWalletBalance, useProcessClaim } from '@/hooks/useWarderApi';
+import { useCashback } from '@/hooks/useCashback';
+import { useWallet } from '@/hooks/useWallet';
 
 const pendingClaims = [
   {
@@ -96,12 +98,16 @@ export default function Activity() {
   const [walletAddress] = useState(TEST_WALLET_ADDRESS);
   const { toast } = useToast();
   
+  // Web3 hooks
+  const { isConnected, isOnSonicNetwork, address } = useWallet();
+  const { claimCashback, isClaimPending, balanceFormatted, canClaim } = useCashback();
+  
   // API hooks
   const { data: transactionsData, isLoading: loadingTransactions } = useTransactions(1, 50, { 
-    user: walletAddress,
+    user: address || walletAddress,
     processed: undefined 
   });
-  const { data: walletBalance, isLoading: loadingBalance } = useWalletBalance(walletAddress);
+  const { data: walletBalance, isLoading: loadingBalance } = useWalletBalance(address || walletAddress);
   const processClaim = useProcessClaim();
   
   // Separate transactions into pending and claimed
@@ -111,56 +117,69 @@ export default function Activity() {
   const totalPending = pendingTransactions.reduce((sum, tx) => sum + parseFloat(tx.cashbackAmount), 0);
   const totalClaimed = claimedTransactions.reduce((sum, tx) => sum + parseFloat(tx.cashbackAmount), 0);
 
-  const handleSingleClaim = async (txHash: string, amount: string) => {
-    try {
-      const result = await processClaim.mutateAsync({ 
-        userAddress: walletAddress, 
-        amount 
-      });
-      
-      toast({
-        title: "Claim Successful!",
-        description: `Claimed ${amount} S. Transaction: ${result.transactionHash.slice(0, 10)}...`,
-      });
-    } catch (error) {
-      toast({
-        title: "Claim Failed",
-        description: "Failed to process claim. Please try again.",
-        variant: "destructive"
-      });
+  const handleSingleClaim = async (claimId: any, amount?: string) => {
+    if (isConnected && isOnSonicNetwork) {
+      // Utiliser le vrai contrat Web3
+      await claimCashback();
+    } else {
+      // Fallback sur l'API pour les tests
+      try {
+        const result = await processClaim.mutateAsync({ 
+          userAddress: address || walletAddress, 
+          amount: amount || '1'
+        });
+        
+        toast({
+          title: "Claim Successful!",
+          description: `Claimed ${amount || '1'} S. Transaction: ${result.transactionHash.slice(0, 10)}...`,
+        });
+      } catch (error) {
+        toast({
+          title: "Claim Failed",
+          description: "Failed to process claim. Please try again.",
+          variant: "destructive"
+        });
+      }
     }
   };
 
   const handleBatchClaim = async () => {
-    const selectedTxs = pendingTransactions.filter(tx => selectedClaims.includes(tx.hash));
-    const totalAmount = selectedTxs.reduce((sum, tx) => sum + parseFloat(tx.cashbackAmount), 0).toFixed(4);
-    
-    try {
-      const result = await processClaim.mutateAsync({ 
-        userAddress: walletAddress, 
-        amount: totalAmount 
-      });
-      
-      toast({
-        title: "Batch Claim Successful!",
-        description: `Claimed ${totalAmount} S from ${selectedTxs.length} transactions`,
-      });
-      
+    if (isConnected && isOnSonicNetwork) {
+      // Pour le batch claim via Web3, on fait un seul claim global
+      await claimCashback();
       setSelectedClaims([]);
-    } catch (error) {
-      toast({
-        title: "Batch Claim Failed",
-        description: "Failed to process batch claim. Please try again.",
-        variant: "destructive"
-      });
+    } else {
+      // Code existant pour l'API
+      const selectedTxs = pendingTransactions.filter(tx => selectedClaims.includes(tx.hash));
+      const totalAmount = selectedTxs.reduce((sum, tx) => sum + parseFloat(tx.cashbackAmount), 0).toFixed(4);
+      
+      try {
+        const result = await processClaim.mutateAsync({ 
+          userAddress: address || walletAddress, 
+          amount: totalAmount 
+        });
+        
+        toast({
+          title: "Batch Claim Successful!",
+          description: `Claimed ${totalAmount} S from ${selectedTxs.length} transactions`,
+        });
+        
+        setSelectedClaims([]);
+      } catch (error) {
+        toast({
+          title: "Batch Claim Failed",
+          description: "Failed to process batch claim. Please try again.",
+          variant: "destructive"
+        });
+      }
     }
   };
 
   const toggleClaimSelection = (claimId: number) => {
     setSelectedClaims(prev => 
-      prev.includes(claimId) 
-        ? prev.filter(id => id !== claimId)
-        : [...prev, claimId]
+      prev.includes(claimId.toString()) 
+        ? prev.filter(id => id !== claimId.toString())
+        : [...prev, claimId.toString()]
     );
   };
 
@@ -172,7 +191,7 @@ export default function Activity() {
             {isPending && (
               <input
                 type="checkbox"
-                checked={selectedClaims.includes(claim.id)}
+                checked={selectedClaims.includes(claim.id.toString())}
                 onChange={() => toggleClaimSelection(claim.id)}
                 className="w-4 h-4 rounded"
               />
@@ -234,11 +253,21 @@ export default function Activity() {
         {isPending && (
           <Button 
             size="sm" 
-            onClick={() => handleSingleClaim(claim.id)}
+            onClick={() => handleSingleClaim(claim.id, claim.netClaimable?.toString())}
+            disabled={isClaimPending || (!isConnected && !canClaim)}
             className="w-full bg-white text-blue-900 hover:bg-white/90"
           >
-            <Coins className="w-3 h-3 mr-1" />
-            Claim on Sonic
+            {isClaimPending ? (
+              <>
+                <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                Claiming...
+              </>
+            ) : (
+              <>
+                <Coins className="w-3 h-3 mr-1" />
+                Claim on Sonic
+              </>
+            )}
           </Button>
         )}
       </div>
@@ -253,12 +282,24 @@ export default function Activity() {
         <p className="text-muted-foreground">Manage your cashback claims & history</p>
       </div>
 
+      {/* Connection Status */}
+      {isConnected && isOnSonicNetwork && (
+        <Card className="bg-green-500/10 border-green-500/20 p-3">
+          <div className="flex items-center gap-2 text-green-600">
+            <CheckCircle className="w-4 h-4" />
+            <span className="text-sm font-medium">Connected to Sonic - Live contract data</span>
+          </div>
+        </Card>
+      )}
+
       {/* Summary Cards */}
       <div className="grid grid-cols-2 gap-4">
         <Card className="bg-gradient-sonic-primary p-4 text-white">
           <div>
             <p className="text-sm text-white/80">Total Pending</p>
-            <p className="font-bold text-2xl text-white">{totalPending.toFixed(2)} S</p>
+            <p className="font-bold text-2xl text-white">
+              {isConnected && isOnSonicNetwork ? balanceFormatted : totalPending.toFixed(2)} S
+            </p>
             <p className="text-xs text-white/60">{pendingClaims.length} claims</p>
           </div>
         </Card>
@@ -280,16 +321,24 @@ export default function Activity() {
               <p className="text-white font-semibold">{selectedClaims.length} claims selected</p>
               <p className="text-white/70 text-sm">
                 Total: {pendingClaims
-                  .filter(claim => selectedClaims.includes(claim.id))
+                  .filter(claim => selectedClaims.includes(claim.id.toString()))
                   .reduce((sum, claim) => sum + claim.netClaimable, 0)
                   .toFixed(2)} S
               </p>
             </div>
             <Button 
               onClick={handleBatchClaim}
+              disabled={isClaimPending}
               className="bg-white text-blue-900 hover:bg-white/90"
             >
-              🚀 Batch Claim on Sonic
+              {isClaimPending ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Claiming...
+                </>
+              ) : (
+                "🚀 Batch Claim on Sonic"
+              )}
             </Button>
           </div>
         </Card>

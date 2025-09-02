@@ -1,8 +1,10 @@
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Eye, EyeOff, Coffee, Pizza, Zap, Gift, TrendingUp, DollarSign, Target } from 'lucide-react';
+import { Eye, EyeOff, Coffee, Pizza, Zap, Gift, TrendingUp, DollarSign, Target, Loader2 } from 'lucide-react';
 import { useState } from 'react';
+import { useCashback } from '@/hooks/useCashback';
+import { useWallet } from '@/hooks/useWallet';
 
 const recentPurchases = [
   { id: 1, item: 'Coffee', location: 'Campus Café', amount: 4.50, cashbackRate: 5.2, cashback: 0.23, boost: 0.05, icon: Coffee },
@@ -16,9 +18,29 @@ const recentPurchases = [
 
 export default function Home() {
   const [showBalance, setShowBalance] = useState(true);
-  const totalBalance = 1247.85;
+  
+  // Hooks Web3
+  const { isConnected, isOnSonicNetwork } = useWallet();
+  const { 
+    balanceFormatted, 
+    canClaim, 
+    claimCashback, 
+    isClaimPending, 
+    estimatedFee, 
+    estimatedNetAmount,
+    feeRate,
+    isLoading: isCashbackLoading,
+    error: cashbackError
+  } = useCashback();
+  
+  // Données hardcodées pour l'affichage (à remplacer plus tard par des données réelles)
   const weeklyEarnings = 125.50;
   const monthlyEarnings = 542.20;
+  
+  // Utiliser la vraie balance du contrat ou les données hardcodées
+  const displayBalance = isConnected && isOnSonicNetwork 
+    ? parseFloat(balanceFormatted) 
+    : 1247.85; // Valeur hardcodée par défaut
 
   return (
     <div className="p-4 space-y-6">
@@ -49,17 +71,29 @@ export default function Home() {
         </div>
       </Card>
 
-      {/* Main Balance Card */}
+      {/* Main Balance Card - MODIFIÉE */}
       <Card className="bg-gradient-sonic-primary p-6 text-white">
         <div className="space-y-6">
           {/* Balance Section */}
           <div className="flex items-start justify-between">
           <div>
-            <p className="text-lg font-medium mb-2" style={{ color: '#02283C' }}>Total Balance</p>
+            <p className="text-lg font-medium mb-2" style={{ color: '#02283C' }}>
+              {isConnected && isOnSonicNetwork ? 'Live Balance' : 'Total Balance'}
+            </p>
             <div className="flex items-center gap-3">
-                <p className="text-4xl font-bold">
-                  {showBalance ? totalBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '****.**'}
-                </p>
+                {isCashbackLoading ? (
+                  <div className="flex items-center gap-2">
+                    <Loader2 className="w-6 h-6 animate-spin" />
+                    <p className="text-2xl font-bold">Loading...</p>
+                  </div>
+                ) : (
+                  <p className="text-4xl font-bold">
+                    {showBalance 
+                      ? displayBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) 
+                      : '****.**'
+                    }
+                  </p>
+                )}
                 <button 
                   onClick={() => setShowBalance(!showBalance)}
                   className="text-white/80 hover:text-white transition-smooth"
@@ -67,6 +101,22 @@ export default function Home() {
                   {showBalance ? <Eye className="w-6 h-6" /> : <EyeOff className="w-6 h-6" />}
                 </button>
               </div>
+              
+              {/* Status indicator */}
+              {isConnected && isOnSonicNetwork && (
+                <div className="mt-2">
+                  <Badge className="bg-green-500/20 text-green-300 border-green-500/30 text-xs">
+                    🔗 Live from Contract
+                  </Badge>
+                </div>
+              )}
+              {cashbackError && (
+                <div className="mt-2">
+                  <Badge variant="destructive" className="text-xs">
+                    Error: {cashbackError}
+                  </Badge>
+                </div>
+              )}
             </div>
             <div className="bg-secondary/20 rounded-2xl p-3">
               <div className="w-8 h-8 bg-secondary rounded-lg flex items-center justify-center">
@@ -90,7 +140,7 @@ export default function Home() {
         </div>
     </Card>
 
-    {/* Claim Cashback Section */}
+    {/* Claim Cashback Section - MODIFIÉE */}
     <Card className="bg-gradient-sonic-primary p-6">
       <div className="space-y-4">
         <div className="flex items-center gap-2 mb-4">
@@ -98,41 +148,89 @@ export default function Home() {
           <h3 className="text-lg font-semibold text-white">Ready to Claim</h3>
         </div>
         
-        <div className="space-y-2 text-sm">
-          <div className="flex justify-between text-white">
-            <span>Gross Cashback:</span>
-            <span>+{(recentPurchases.reduce((total, purchase) => total + purchase.cashback, 0)).toFixed(2)} S</span>
+        {isConnected && isOnSonicNetwork ? (
+          // Vraies données du contrat
+          <div className="space-y-2 text-sm">
+            <div className="flex justify-between text-white">
+              <span>Available Balance:</span>
+              <span>{balanceFormatted} S</span>
+            </div>
+            <div className="flex justify-between text-white/80">
+              <span>Platform Fee ({(feeRate / 100)}%):</span>
+              <span>-{estimatedFee} S</span>
+            </div>
+            <div className="border-t border-white/20 pt-2"></div>
+            <div className="flex justify-between text-white font-bold text-lg">
+              <span>Net Claimable:</span>
+              <span>{estimatedNetAmount} S</span>
+            </div>
           </div>
-          <div className="flex justify-between text-white/80">
-            <span>Platform Fee (2%):</span>
-            <span>-{(recentPurchases.reduce((total, purchase) => total + purchase.cashback, 0) * 0.02).toFixed(2)} S</span>
+        ) : (
+          // Données mockées quand pas connecté
+          <div className="space-y-2 text-sm">
+            <div className="flex justify-between text-white">
+              <span>Gross Cashback:</span>
+              <span>+{(recentPurchases.reduce((total, purchase) => total + purchase.cashback, 0)).toFixed(2)} S</span>
+            </div>
+            <div className="flex justify-between text-white/80">
+              <span>Platform Fee (2%):</span>
+              <span>-{(recentPurchases.reduce((total, purchase) => total + purchase.cashback, 0) * 0.02).toFixed(2)} S</span>
+            </div>
+            <div className="flex justify-between text-white">
+              <span className="flex items-center gap-1">
+                <Zap className="w-3 h-3" />
+                Boost Bonus:
+              </span>
+              <span>+{(recentPurchases.reduce((total, purchase) => total + purchase.boost, 0)).toFixed(2)} S</span>
+            </div>
+            <div className="flex justify-between text-white/80">
+              <span>Fee-funded Bonus:</span>
+              <span>+0.12 S</span>
+            </div>
+            <div className="border-t border-white/20 pt-2"></div>
+            <div className="flex justify-between text-white font-bold text-lg">
+              <span>Net Claimable:</span>
+              <span>{(recentPurchases.reduce((total, purchase) => total + purchase.cashback + purchase.boost, 0) - (recentPurchases.reduce((total, purchase) => total + purchase.cashback, 0) * 0.02) + 0.12).toFixed(2)} S</span>
+            </div>
           </div>
-          <div className="flex justify-between text-white">
-            <span className="flex items-center gap-1">
-              <Zap className="w-3 h-3" />
-              Boost Bonus:
-            </span>
-            <span>+{(recentPurchases.reduce((total, purchase) => total + purchase.boost, 0)).toFixed(2)} S</span>
-          </div>
-          <div className="flex justify-between text-white/80">
-            <span>Fee-funded Bonus:</span>
-            <span>+0.12 S</span>
-          </div>
-          <div className="border-t border-white/20 pt-2"></div>
-          <div className="flex justify-between text-white font-bold text-lg">
-            <span>Net Claimable:</span>
-            <span>{(recentPurchases.reduce((total, purchase) => total + purchase.cashback + purchase.boost, 0) - (recentPurchases.reduce((total, purchase) => total + purchase.cashback, 0) * 0.02) + 0.12).toFixed(2)} S</span>
-          </div>
-        </div>
+        )}
         
         <div className="flex gap-3 mt-6">
-          <Button className="flex-1 bg-white text-blue-900 hover:bg-white/90 font-semibold">
-            🚀 Claim on Sonic
+          <Button 
+            className="flex-1 bg-white text-blue-900 hover:bg-white/90 font-semibold"
+            onClick={claimCashback}
+            disabled={isClaimPending || !canClaim || !isConnected || !isOnSonicNetwork}
+          >
+            {isClaimPending ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Claiming...
+              </>
+            ) : (
+              "🚀 Claim on Sonic"
+            )}
           </Button>
           <Button variant="outline" className="flex-1 border-white/20 text-white hover:bg-white/10">
             💱 Instant Cashout
           </Button>
         </div>
+        
+        {/* Status messages */}
+        {!isConnected && (
+          <div className="text-center text-white/70 text-sm mt-2">
+            Connect your wallet to claim cashback
+          </div>
+        )}
+        {isConnected && !isOnSonicNetwork && (
+          <div className="text-center text-orange-300 text-sm mt-2">
+            Switch to Sonic network to claim
+          </div>
+        )}
+        {isConnected && isOnSonicNetwork && !canClaim && (
+          <div className="text-center text-white/70 text-sm mt-2">
+            Minimum claim amount not reached
+          </div>
+        )}
       </div>
     </Card>
 

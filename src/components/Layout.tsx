@@ -2,6 +2,7 @@ import { ReactNode } from 'react';
 import { Home, Gift, Receipt, Trophy, User } from 'lucide-react';
 import { useLocation, Link } from 'react-router-dom';
 import { cn } from '@/lib/utils';
+import { ConnectWallet } from '@/components/connectWallet';
 
 interface LayoutProps {
   children: ReactNode;
@@ -20,7 +21,11 @@ export default function Layout({ children }: LayoutProps) {
 
   return (
     <div className="min-h-screen bg-background flex flex-col max-w-md mx-auto">
-      {/* Main Content */}
+      {/* Connect Wallet Section */}
+      <div className="p-4 pt-6">
+        <ConnectWallet />
+      </div>
+
       <main className="flex-1 pb-20">
         {children}
       </main>
