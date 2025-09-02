@@ -3,7 +3,9 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Calendar, Clock, Coins, Receipt, CheckCircle, AlertCircle, Zap, ArrowRight } from 'lucide-react';
+import { Calendar, Clock, Coins, Receipt, CheckCircle, AlertCircle, Zap, ArrowRight, Loader2 } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
+import { useTransactions, useWalletBalance, useProcessClaim } from '@/hooks/useWarderApi';
 
 const pendingClaims = [
   {
@@ -86,11 +88,28 @@ const claimHistory = [
   }
 ];
 
+// Test wallet address
+const TEST_WALLET_ADDRESS = '0x0e0A0a14ac1E9fa088BBDdCb925c47d0ba5Ccfa1';
+
 export default function Activity() {
-  const [selectedClaims, setSelectedClaims] = useState<number[]>([]);
+  const [selectedClaims, setSelectedClaims] = useState<string[]>([]);
+  const [walletAddress] = useState(TEST_WALLET_ADDRESS);
+  const { toast } = useToast();
   
-  const totalPending = pendingClaims.reduce((sum, claim) => sum + claim.netClaimable, 0);
-  const totalClaimed = claimHistory.reduce((sum, claim) => sum + claim.netClaimed, 0);
+  // API hooks
+  const { data: transactionsData, isLoading: loadingTransactions } = useTransactions(1, 50, { 
+    user: walletAddress,
+    processed: undefined 
+  });
+  const { data: walletBalance, isLoading: loadingBalance } = useWalletBalance(walletAddress);
+  const processClaim = useProcessClaim();
+  
+  // Separate transactions into pending and claimed
+  const pendingTransactions = transactionsData?.transactions.filter(tx => !tx.processed && parseFloat(tx.cashbackAmount) > 0) || [];
+  const claimedTransactions = transactionsData?.transactions.filter(tx => tx.processed) || [];
+  
+  const totalPending = pendingTransactions.reduce((sum, tx) => sum + parseFloat(tx.cashbackAmount), 0);
+  const totalClaimed = claimedTransactions.reduce((sum, tx) => sum + parseFloat(tx.cashbackAmount), 0);
 
   const handleSingleClaim = (claimId: number) => {
     console.log(`Claiming single cashback ${claimId}`);
