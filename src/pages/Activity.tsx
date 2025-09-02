@@ -111,14 +111,49 @@ export default function Activity() {
   const totalPending = pendingTransactions.reduce((sum, tx) => sum + parseFloat(tx.cashbackAmount), 0);
   const totalClaimed = claimedTransactions.reduce((sum, tx) => sum + parseFloat(tx.cashbackAmount), 0);
 
-  const handleSingleClaim = (claimId: number) => {
-    console.log(`Claiming single cashback ${claimId}`);
-    // In real app: call Sonic blockchain claim function
+  const handleSingleClaim = async (txHash: string, amount: string) => {
+    try {
+      const result = await processClaim.mutateAsync({ 
+        userAddress: walletAddress, 
+        amount 
+      });
+      
+      toast({
+        title: "Claim Successful!",
+        description: `Claimed ${amount} S. Transaction: ${result.transactionHash.slice(0, 10)}...`,
+      });
+    } catch (error) {
+      toast({
+        title: "Claim Failed",
+        description: "Failed to process claim. Please try again.",
+        variant: "destructive"
+      });
+    }
   };
 
-  const handleBatchClaim = () => {
-    console.log(`Batch claiming ${selectedClaims.length} cashbacks`);
-    // In real app: call batch claim on CashbackRouter contract
+  const handleBatchClaim = async () => {
+    const selectedTxs = pendingTransactions.filter(tx => selectedClaims.includes(tx.hash));
+    const totalAmount = selectedTxs.reduce((sum, tx) => sum + parseFloat(tx.cashbackAmount), 0).toFixed(4);
+    
+    try {
+      const result = await processClaim.mutateAsync({ 
+        userAddress: walletAddress, 
+        amount: totalAmount 
+      });
+      
+      toast({
+        title: "Batch Claim Successful!",
+        description: `Claimed ${totalAmount} S from ${selectedTxs.length} transactions`,
+      });
+      
+      setSelectedClaims([]);
+    } catch (error) {
+      toast({
+        title: "Batch Claim Failed",
+        description: "Failed to process batch claim. Please try again.",
+        variant: "destructive"
+      });
+    }
   };
 
   const toggleClaimSelection = (claimId: number) => {
