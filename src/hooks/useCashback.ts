@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { ethers } from 'ethers';
 import { useWallet } from './useWallet';
-import { CONTRACTS, WARDER_WALLET_ABI } from '@/lib/contracts';
+import { useTokenApproval } from './useTokenApproval';
+import { CONTRACTS, WARDER_WALLET_ABI, FEE_MANAGER_ABI } from '@/lib/contracts';
 import { useToast } from './use-toast';
 
 interface CashbackData {
@@ -19,6 +20,7 @@ interface CashbackData {
 export const useCashback = () => {
   const { provider, signer, address, isConnected, isOnSonicNetwork } = useWallet();
   const { toast } = useToast();
+  const { isApproved, approveToken, isApproving } = useTokenApproval();
   const [cashbackData, setCashbackData] = useState<CashbackData>({
     balance: '0',
     balanceFormatted: '0.00',
@@ -52,31 +54,42 @@ export const useCashback = () => {
       const contract = getContract();
       if (!contract) throw new Error('Contract not available');
 
-      // Fetch all data in parallel
-      const [
-        balance,
-        canClaim,
-        minimumClaimAmount,
-        feeRate,
-        feeData
-      ] = await Promise.all([
-        contract.getUserBalance(address),
-        contract.canClaim(address),
-        contract.minimumClaimAmount(),
-        contract.claimFeeRate(),
-        contract.calculateClaimFee(address)
-      ]);
+      console.log('Fetching balance for address:', address);
+      console.log('Contract address:', CONTRACTS.WARDER_WALLET);
 
+      const balance = await contract.cashbackBalances(address);
+      console.log('Raw balance from contract:', balance.toString());
+      
       const balanceFormatted = ethers.formatEther(balance);
-      const estimatedFee = ethers.formatEther(feeData[0]);
-      const estimatedNetAmount = ethers.formatEther(feeData[1]);
+      console.log('Formatted balance:', balanceFormatted);
+
+      const minimumClaimAmount = 0.1;
+      const canClaimResult = parseFloat(balanceFormatted) >= minimumClaimAmount;
+      
+      const feeManager = new ethers.Contract(CONTRACTS.FEE_MANAGER, FEE_MANAGER_ABI, provider);
+      let estimatedFee = '0';
+      let estimatedNetAmount = balanceFormatted;
+      let feeRatePercent = 0;
+      
+      if (canClaimResult && parseFloat(balanceFormatted) > 0) {
+        try {
+          const balanceWei = ethers.parseEther(balanceFormatted);
+          const feeWei = await feeManager.calculateFee(balanceWei);
+          estimatedFee = ethers.formatEther(feeWei);
+          const netAmount = balanceWei - feeWei;
+          estimatedNetAmount = ethers.formatEther(netAmount);
+          feeRatePercent = parseFloat(estimatedFee) / parseFloat(balanceFormatted) * 100;
+        } catch (feeError) {
+          console.warn('Could not calculate fee:', feeError);
+        }
+      }
 
       setCashbackData({
         balance: balance.toString(),
         balanceFormatted,
-        canClaim,
-        minimumClaimAmount: ethers.formatEther(minimumClaimAmount),
-        feeRate: Number(feeRate),
+        canClaim: canClaimResult,
+        minimumClaimAmount: minimumClaimAmount.toString(),
+        feeRate: feeRatePercent,
         estimatedFee,
         estimatedNetAmount,
         isLoading: false,
@@ -93,7 +106,6 @@ export const useCashback = () => {
     }
   };
 
-  // Claim cashback
   const claimCashback = async () => {
     if (!signer || !address || !isConnected || !isOnSonicNetwork) {
       toast({
@@ -113,33 +125,47 @@ export const useCashback = () => {
       return;
     }
 
+    if (!isApproved) {
+      toast({
+        title: "Token Approval Required",
+        description: "Please approve S token spending first",
+        variant: "destructive"
+      });
+      const approvalSuccess = await approveToken();
+      if (!approvalSuccess) {
+        return;
+      }
+    }
+
     setIsClaimPending(true);
 
     try {
-      const contract = new ethers.Contract(CONTRACTS.WARDER_WALLET, WARDER_WALLET_ABI, signer);
+      const feeManagerContract = new ethers.Contract(CONTRACTS.FEE_MANAGER, FEE_MANAGER_ABI, signer);
       
-      // Estimate gas
-      const gasEstimate = await contract.claimCashback.estimateGas();
-      const gasLimit = gasEstimate * 120n / 100n; // Add 20% buffer
+      const balanceWei = ethers.parseEther(cashbackData.balanceFormatted);
+      const feeWei = await feeManagerContract.calculateFee(balanceWei);
+      
+      const gasEstimate = await feeManagerContract.processClaim.estimateGas(address, balanceWei, { value: feeWei });
+      const gasLimit = gasEstimate * 120n / 100n;
 
-      // Send transaction
-      const tx = await contract.claimCashback({ gasLimit });
+      const tx = await feeManagerContract.processClaim(address, balanceWei, { 
+        value: feeWei, 
+        gasLimit 
+      });
       
       toast({
         title: "Transaction Submitted",
         description: "Your claim transaction has been submitted to the network",
       });
 
-      // Wait for confirmation
       const receipt = await tx.wait();
       
       if (receipt.status === 1) {
         toast({
           title: "Claim Successful!",
-          description: `Successfully claimed ${cashbackData.estimatedNetAmount} S (after ${(cashbackData.feeRate / 100)}% fee)`,
+          description: `Successfully claimed ${cashbackData.estimatedNetAmount} S (after ${cashbackData.feeRate.toFixed(1)}% fee)`,
         });
 
-        // Refresh cashback data
         await fetchCashbackData();
       } else {
         throw new Error('Transaction failed');
@@ -184,5 +210,8 @@ export const useCashback = () => {
     claimCashback,
     isClaimPending,
     refreshData: fetchCashbackData,
+    isApproved,
+    approveToken,
+    isApproving,
   };
 };

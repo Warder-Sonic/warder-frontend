@@ -1,4 +1,3 @@
-// useWallet.ts - Version modifiée
 import { useState, useEffect } from 'react';
 import { ethers } from 'ethers';
 import { SONIC_TESTNET } from '@/lib/contracts';
@@ -12,7 +11,7 @@ interface WalletState {
   isLoading: boolean;
   error: string | null;
   walletType: string | null;
-  showWalletSelection: boolean; // NOUVEAU: pour afficher la sélection
+  showWalletSelection: boolean;
 }
 
 interface WalletInfo {
@@ -38,7 +37,7 @@ export const useWallet = () => {
     isLoading: false,
     error: null,
     walletType: null,
-    showWalletSelection: false, // NOUVEAU
+    showWalletSelection: false,
   });
 
   // Detect available wallets
@@ -61,7 +60,6 @@ export const useWallet = () => {
         });
       }
       
-      // Handle multiple providers
       if (window.ethereum.providers && Array.isArray(window.ethereum.providers)) {
         window.ethereum.providers.forEach((provider: any) => {
           if (provider.isMetaMask && !provider.isRabby && !wallets.find(w => w.name === 'MetaMask')) {
@@ -102,17 +100,20 @@ export const useWallet = () => {
     // Check each wallet to see if any are already connected
     for (const walletInfo of wallets) {
       try {
-        const provider = new ethers.BrowserProvider(walletInfo.provider);
-        const accounts = await provider.listAccounts();
+        // Check if wallet is connected without requesting permission first
+        const accounts = await walletInfo.provider.request({ 
+          method: 'eth_accounts' 
+        });
         
-        if (accounts.length > 0) {
+        if (accounts && accounts.length > 0) {
+          const provider = new ethers.BrowserProvider(walletInfo.provider);
           const signer = await provider.getSigner();
           const network = await provider.getNetwork();
           
           setWallet(prev => ({
             ...prev,
             isConnected: true,
-            address: accounts[0].address,
+            address: accounts[0],
             provider,
             signer,
             chainId: Number(network.chainId),
@@ -128,6 +129,7 @@ export const useWallet = () => {
         }
       } catch (error) {
         console.error(`Error checking ${walletInfo.name} connection:`, error);
+        // Continue checking other wallets
       }
     }
   };
@@ -188,8 +190,14 @@ export const useWallet = () => {
     }));
 
     try {
-      // Request connection
-      await walletInfo.provider.request({ method: 'eth_requestAccounts' });
+      // Request connection and approval from user
+      const accounts = await walletInfo.provider.request({ 
+        method: 'eth_requestAccounts' 
+      });
+
+      if (!accounts || accounts.length === 0) {
+        throw new Error('No accounts found. Please ensure your wallet is unlocked.');
+      }
       
       const provider = new ethers.BrowserProvider(walletInfo.provider);
       const signer = await provider.getSigner();
@@ -220,10 +228,22 @@ export const useWallet = () => {
 
     } catch (error: any) {
       console.error('Connection error:', error);
+      
+      let errorMessage = 'Connection failed';
+      if (error.code === 4001) {
+        errorMessage = 'User rejected the connection request';
+      } else if (error.code === -32002) {
+        errorMessage = 'Connection request already pending. Please check your wallet.';
+      } else if (error.message?.includes('User rejected')) {
+        errorMessage = 'Connection was cancelled by user';
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+
       setWallet(prev => ({ 
         ...prev, 
         isLoading: false, 
-        error: error.message || 'Connection failed',
+        error: errorMessage,
         walletType: null,
         showWalletSelection: false,
       }));
