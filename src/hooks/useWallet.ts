@@ -29,9 +29,43 @@ export const useWallet = () => {
     error: null,
   });
 
-  const hasMetaMask = typeof window !== 'undefined' && window.ethereum?.isMetaMask;
+  const getMetaMaskAvailability = () => {
+    return typeof window !== 'undefined' && 
+           typeof window.ethereum !== 'undefined' && 
+           (window.ethereum.isMetaMask || window.ethereum._metamask);
+  };
+
+  const validateConnection = async (provider: ethers.BrowserProvider, signer: ethers.JsonRpcSigner, address: string) => {
+    try {
+      const currentAddress = await signer.getAddress();
+      const network = await provider.getNetwork();
+      const balance = await provider.getBalance(address);
+      
+      console.log('Connection validation:', {
+        expectedAddress: address,
+        currentAddress,
+        chainId: Number(network.chainId),
+        balance: ethers.formatEther(balance),
+        isValid: currentAddress.toLowerCase() === address.toLowerCase()
+      });
+      
+      return currentAddress.toLowerCase() === address.toLowerCase();
+    } catch (error) {
+      console.error('Connection validation failed:', error);
+      return false;
+    }
+  };
+
+  const hasMetaMask = getMetaMaskAvailability();
 
   useEffect(() => {
+    console.log('Wallet initialization:', {
+      hasWindow: typeof window !== 'undefined',
+      hasEthereum: !!window?.ethereum,
+      isMetaMask: window?.ethereum?.isMetaMask,
+      hasMetaMask
+    });
+    
     checkExistingConnection();
     
     if (hasMetaMask) {
@@ -45,28 +79,68 @@ export const useWallet = () => {
         }
       };
     }
-  }, [hasMetaMask]);
+  }, []);
+
+  useEffect(() => {
+    if (!wallet.isConnected || !wallet.provider || !wallet.signer || !wallet.address) return;
+    
+    const validatePeriodically = setInterval(async () => {
+      try {
+        const isValid = await validateConnection(wallet.provider!, wallet.signer!, wallet.address!);
+        if (!isValid) {
+          console.log('Periodic validation failed, disconnecting');
+          disconnectWallet();
+        }
+      } catch (error) {
+        console.error('Periodic validation error:', error);
+        disconnectWallet();
+      }
+    }, 10000);
+
+    return () => clearInterval(validatePeriodically);
+  }, [wallet.isConnected, wallet.provider, wallet.signer, wallet.address]);
 
   const checkExistingConnection = async () => {
-    if (!hasMetaMask) return;
+    const metaMaskAvailable = getMetaMaskAvailability();
+    console.log('checkExistingConnection called, hasMetaMask:', metaMaskAvailable);
+    if (!metaMaskAvailable) {
+      console.log('No MetaMask detected');
+      return;
+    }
     
     try {
       const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+      console.log('Existing accounts:', accounts);
       
       if (accounts && accounts.length > 0) {
+        console.log('Found existing connection, initializing...');
         const provider = new ethers.BrowserProvider(window.ethereum);
         const signer = await provider.getSigner();
         const network = await provider.getNetwork();
         
-        setWallet({
-          isConnected: true,
-          address: accounts[0],
-          provider,
-          signer,
-          chainId: Number(network.chainId),
-          isLoading: false,
-          error: null,
-        });
+        const isValid = await validateConnection(provider, signer, accounts[0]);
+        
+        if (isValid) {
+          console.log('Auto-connecting with validated connection:', {
+            address: accounts[0],
+            chainId: Number(network.chainId)
+          });
+          
+          setWallet({
+            isConnected: true,
+            address: accounts[0],
+            provider,
+            signer,
+            chainId: Number(network.chainId),
+            isLoading: false,
+            error: null,
+          });
+        } else {
+          console.log('Connection validation failed, disconnecting');
+          disconnectWallet();
+        }
+      } else {
+        console.log('No existing accounts found');
       }
     } catch (error) {
       console.error('Error checking connection:', error);
@@ -74,7 +148,10 @@ export const useWallet = () => {
   };
 
   const connectWallet = async () => {
-    if (!hasMetaMask) {
+    const metaMaskAvailable = getMetaMaskAvailability();
+    console.log('connectWallet called, hasMetaMask:', metaMaskAvailable);
+    
+    if (!metaMaskAvailable) {
       setWallet(prev => ({ 
         ...prev, 
         error: 'MetaMask not detected. Please install MetaMask.' 
@@ -85,7 +162,16 @@ export const useWallet = () => {
     setWallet(prev => ({ ...prev, isLoading: true, error: null }));
 
     try {
-      const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+      console.log('Requesting accounts...');
+      
+      const accounts = await Promise.race([
+        window.ethereum.request({ method: 'eth_requestAccounts' }),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Connection timeout - please try again')), 10000)
+        )
+      ]);
+      
+      console.log('Accounts received:', accounts);
 
       if (!accounts || accounts.length === 0) {
         throw new Error('No accounts found. Please ensure your wallet is unlocked.');
@@ -96,6 +182,18 @@ export const useWallet = () => {
       const address = await signer.getAddress();
       const network = await provider.getNetwork();
       const chainId = Number(network.chainId);
+
+      const isValid = await validateConnection(provider, signer, address);
+      
+      if (!isValid) {
+        throw new Error('Connection validation failed. Please try again.');
+      }
+
+      console.log('Connected successfully with validation:', {
+        address,
+        chainId,
+        isOnSonic: chainId === SONIC_TESTNET.chainId
+      });
 
       setWallet({
         isConnected: true,
@@ -108,6 +206,7 @@ export const useWallet = () => {
       });
 
       if (chainId !== SONIC_TESTNET.chainId) {
+        console.log('Switching to Sonic network...');
         await switchToSonic();
       }
 
@@ -134,7 +233,7 @@ export const useWallet = () => {
   };
 
   const switchToSonic = async () => {
-    if (!hasMetaMask) return;
+    if (!getMetaMaskAvailability()) return;
 
     try {
       await window.ethereum.request({
@@ -185,17 +284,27 @@ export const useWallet = () => {
   };
 
   const handleChainChanged = async (chainIdHex: string) => {
+    console.log('Chain changed to:', chainIdHex);
     try {
-      if (hasMetaMask) {
+      if (getMetaMaskAvailability()) {
         const provider = new ethers.BrowserProvider(window.ethereum);
         const network = await provider.getNetwork();
         const signer = await provider.getSigner();
+        const address = await signer.getAddress();
+        
+        console.log('Chain change - updating wallet state:', {
+          chainId: Number(network.chainId),
+          address,
+          isConnected: true
+        });
         
         setWallet(prev => ({
           ...prev,
           provider,
           signer,
+          address,
           chainId: Number(network.chainId),
+          isConnected: true,
         }));
       }
     } catch (error) {
