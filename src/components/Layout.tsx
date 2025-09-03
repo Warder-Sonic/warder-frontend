@@ -2,7 +2,7 @@ import { ReactNode } from 'react';
 import { Home, Gift, Receipt, Trophy, User } from 'lucide-react';
 import { useLocation, Link } from 'react-router-dom';
 import { cn } from '@/lib/utils';
-import { ConnectWallet } from '@/components/connectWallet';
+import { ConnectWallet } from '@/components/ConnectWallet';
 
 interface LayoutProps {
   children: ReactNode;
