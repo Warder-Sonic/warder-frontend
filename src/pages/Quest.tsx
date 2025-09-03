@@ -172,7 +172,6 @@ export default function Quest() {
                 
                 <div className="text-right">
                   <div className="flex items-center gap-1 text-accent">
-                    <Coins className="w-4 h-4" />
                     <span className="font-semibold">{quest.reward} S</span>
                   </div>
                   {quest.completed ? (

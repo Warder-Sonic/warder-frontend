@@ -16,7 +16,7 @@ const featuredOffers = [
     category: 'DeFi',
     active: true,
     boost: true,
-    requirements: 'Min $10 swap'
+    requirements: 'Min 10 S swap'
   },
   {
     id: 2,

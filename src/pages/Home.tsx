@@ -5,6 +5,7 @@ import { Eye, EyeOff, Coffee, Pizza, Zap, Gift, TrendingUp, DollarSign, Target, 
 import { useState } from 'react';
 import { useCashback } from '@/hooks/useCashback';
 import { useWallet } from '@/hooks/useWallet';
+import { useTransactions, useWalletBalance } from '@/hooks/useWarderApi';
 
 const recentPurchases = [
   { id: 1, item: 'Coffee', location: 'Campus Café', amount: 4.50, cashbackRate: 5.2, cashback: 0.23, boost: 0.05, icon: Coffee },
@@ -20,7 +21,7 @@ export default function Home() {
   const [showBalance, setShowBalance] = useState(true);
   
   // Hooks Web3
-  const { isConnected, isOnSonicNetwork } = useWallet();
+  const { isConnected, isOnSonicNetwork, address } = useWallet();
   const { 
     balanceFormatted, 
     canClaim, 
@@ -33,14 +34,26 @@ export default function Home() {
     error: cashbackError
   } = useCashback();
   
-  // Données hardcodées pour l'affichage (à remplacer plus tard par des données réelles)
-  const weeklyEarnings = 125.50;
-  const monthlyEarnings = 542.20;
+  const { data: transactionsData } = useTransactions(1, 5, { user: address });
+  const { data: walletBalance } = useWalletBalance(address);
   
-  // Utiliser la vraie balance du contrat ou les données hardcodées
+  const userTransactions = transactionsData?.transactions || [];
+  
+  const now = new Date();
+  const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  
+  const weeklyEarnings = userTransactions
+    .filter(tx => tx.processed && new Date(tx.processedAt) >= weekAgo)
+    .reduce((sum, tx) => sum + parseFloat(tx.cashbackAmount || '0'), 0);
+    
+  const monthlyEarnings = userTransactions
+    .filter(tx => tx.processed && new Date(tx.processedAt) >= monthAgo)
+    .reduce((sum, tx) => sum + parseFloat(tx.cashbackAmount || '0'), 0);
+  
   const displayBalance = isConnected && isOnSonicNetwork 
     ? parseFloat(balanceFormatted) 
-    : 1247.85; // Valeur hardcodée par défaut
+    : parseFloat(walletBalance?.cashbackBalance || '0');
 
   return (
     <div className="p-4 space-y-6">
@@ -239,16 +252,16 @@ export default function Home() {
         <div className="space-y-4">
           <h3 className="text-lg font-semibold text-white flex items-center gap-2">
             <TrendingUp className="w-5 h-5 text-green-400" />
-            Cashback Insights
+            Cashback Stats
           </h3>
           <div className="grid grid-cols-2 gap-4">
             <div className="bg-white/10 rounded-lg p-3 text-center">
-              <p className="text-3xl font-bold text-green-400">↗ 12%</p>
-              <p className="text-xs text-white/80">vs last week</p>
+              <p className="text-3xl font-bold text-green-400">{userTransactions.length}</p>
+              <p className="text-xs text-white/80">total transactions</p>
             </div>
             <div className="bg-white/10 rounded-lg p-3 text-center">
-              <p className="text-3xl font-bold text-blue-400">🏆 #3</p>
-              <p className="text-xs text-white/80">top earner</p>
+              <p className="text-3xl font-bold text-blue-400">{(userTransactions.reduce((sum, tx) => sum + parseFloat(tx.cashbackRate || '0'), 0) / Math.max(userTransactions.length, 1) * 100).toFixed(1)}%</p>
+              <p className="text-xs text-white/80">avg rate</p>
             </div>
           </div>
           <div className="bg-white/10 rounded-lg p-3">
@@ -260,6 +273,43 @@ export default function Home() {
       {/* Recent Purchases */}
       <div className="space-y-4">
         <h2 className="text-lg font-semibold text-white">Recent Purchases</h2>
+        
+        {userTransactions.map((tx) => (
+          <Card key={tx.hash} className="bg-gradient-sonic-primary p-4 text-white">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center">
+                  <Zap className="w-5 h-5 text-white" />
+                </div>
+               <div>
+                 <div className="flex items-center gap-2">
+                   <p className="font-medium" style={{ color: '#02283C' }}>{tx.dexName}</p>
+                   <Badge className="text-xs bg-green-500/20 text-green-300 border-green-500/30">
+                     {(parseFloat(tx.cashbackRate) * 100).toFixed(1)}%
+                   </Badge>
+                   {tx.processed && (
+                     <div className="flex items-center gap-1">
+                       <TrendingUp className="w-3 h-3 text-green-400" />
+                     </div>
+                   )}
+                 </div>
+                 <p className="text-sm" style={{ color: '#02283C', opacity: 0.7 }}>Block #{tx.blockNumber}</p>
+               </div>
+             </div>
+             
+             <div className="text-right">
+               <p className="font-medium text-white">{parseFloat(tx.value / 1e18 || '0').toFixed(4)} S</p>
+               <div className="flex flex-col gap-1">
+                 <Badge className={`text-xs font-semibold border-0 ${
+                   tx.processed ? 'bg-green-500/20 text-green-300' : 'bg-yellow-500/20 text-yellow-300'
+                 }`}>
+                   {tx.processed ? '✓' : '⏳'} {parseFloat(tx.cashbackAmount).toFixed(4)} S
+                 </Badge>
+               </div>
+             </div>
+           </div>
+         </Card>
+        ))}
         
         {recentPurchases.map((purchase) => (
           <Card key={purchase.id} className="bg-gradient-sonic-primary p-4 text-white">

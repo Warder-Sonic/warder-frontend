@@ -3,29 +3,20 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Settings, Award, Wallet, TrendingUp, Users, Bell, Shield, HelpCircle, LogOut } from 'lucide-react';
+import { useWallet } from '@/hooks/useWallet';
+import { useWalletBalance } from '@/hooks/useWarderApi';
 
 export default function Profile() {
-  const user = {
-    name: 'Alex Chen',
-    email: 'alex.chen@university.edu',
-    studentId: 'STU-2024-001',
-    university: 'Sonic University',
-    joinDate: 'January 2024',
-  };
+  const { address, isConnected } = useWallet();
+  const { data: walletBalance } = useWalletBalance(address);
 
   const stats = {
-    totalSpent: 1247.80,
-    totalCashback: 62.39,
-    questsCompleted: 3,
-    rank: 'Silver Scholar',
+    totalSpent: parseFloat(walletBalance?.cashbackBalance || '0'),
+    totalCashback: parseFloat(walletBalance?.cashbackBalance || '0'),
+    questsCompleted: walletBalance?.recentTransactions?.length || 0,
+    rank: 'Sonic User',
   };
 
-  const achievements = [
-    { name: 'Early Adopter', description: 'One of the first 100 users', earned: true },
-    { name: 'Quest Master', description: 'Completed 5 quests', earned: false, progress: 3 },
-    { name: 'Spender', description: 'Spent $1000+ on campus', earned: true },
-    { name: 'Cashback King', description: 'Earned $100+ in cashback', earned: false, progress: 62 },
-  ];
 
   const menuItems = [
     { icon: Settings, label: 'Account Settings', description: 'Manage your account' },
@@ -49,14 +40,13 @@ export default function Profile() {
           <Avatar className="w-16 h-16 border-2 border-white/20">
             <AvatarImage src="" />
             <AvatarFallback className="bg-white/20 text-white text-lg font-semibold">
-              {user.name.split(' ').map(n => n[0]).join('')}
+              {address ? address.slice(2, 4).toUpperCase() : 'W'}
             </AvatarFallback>
           </Avatar>
           
           <div className="flex-1">
-            <h2 className="text-xl font-bold">{user.name}</h2>
-            <p className="text-white/90 text-sm">{user.email}</p>
-            <p className="text-white/70 text-xs">{user.university}</p>
+            <h2 className="text-xl font-bold">{address ? `${address.slice(0, 6)}...${address.slice(-4)}` : 'Connect Wallet'}</h2>
+            <p className="text-white/90 text-sm">{isConnected ? 'Connected' : 'Not Connected'}</p>
             <Badge variant="secondary" className="mt-2 bg-white/20 text-white border-white/30">
               {stats.rank}
             </Badge>
@@ -72,8 +62,8 @@ export default function Profile() {
               <TrendingUp className="w-5 h-5 text-white" />
             </div>
             <div>
-              <p className="text-sm text-white/80">Total Spent</p>
-              <p className="font-bold text-white">${stats.totalSpent.toFixed(2)}</p>
+              <p className="text-sm text-white/80">Balance</p>
+              <p className="font-bold text-white">{stats.totalSpent.toFixed(2)} S</p>
             </div>
           </div>
         </Card>
@@ -85,7 +75,7 @@ export default function Profile() {
             </div>
             <div>
               <p className="text-sm text-white/80">Cashback</p>
-              <p className="font-bold text-white">{stats.totalCashback.toFixed(2)} <span className="text-sonic-hero-orange">S</span></p>
+              <p className="font-bold text-white">{stats.totalCashback.toFixed(2)} S</p>
             </div>
           </div>
         </Card>
@@ -108,52 +98,13 @@ export default function Profile() {
               <Users className="w-5 h-5 text-white" />
             </div>
             <div>
-              <p className="text-sm text-white/80">Member Since</p>
-              <p className="font-bold text-sm text-white">{user.joinDate}</p>
+              <p className="text-sm text-white/80">Transactions</p>
+              <p className="font-bold text-sm text-white">{stats.questsCompleted}</p>
             </div>
           </div>
         </Card>
       </div>
 
-      {/* Achievements */}
-      <div className="space-y-4">
-        <h2 className="text-lg font-semibold">Achievements</h2>
-        
-        {achievements.map((achievement, index) => (
-          <Card key={index} className="bg-gradient-sonic-primary p-4 text-white">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                  achievement.earned ? 'bg-green-500/20' : 'bg-white/20'
-                }`}>
-                  <Award className={`w-5 h-5 ${
-                    achievement.earned ? 'text-green-400' : 'text-white/70'
-                  }`} />
-                </div>
-                <div>
-                  <p className="font-medium text-white">{achievement.name}</p>
-                  <p className="text-sm text-white/70">{achievement.description}</p>
-                  {!achievement.earned && achievement.progress && (
-                    <p className="text-xs text-accent mt-1">
-                      Progress: {achievement.progress}/{achievement.name === 'Quest Master' ? 5 : 100}
-                    </p>
-                  )}
-                </div>
-              </div>
-              
-              {achievement.earned ? (
-                <Badge variant="default" className="bg-green-500 hover:bg-green-600">
-                  Earned
-                </Badge>
-              ) : (
-                <Badge variant="outline" className="border-white/30 text-white/70">
-                  Locked
-                </Badge>
-              )}
-            </div>
-          </Card>
-        ))}
-      </div>
 
       {/* Menu Options */}
       <div className="space-y-4">
