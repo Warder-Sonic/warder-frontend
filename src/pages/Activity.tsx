@@ -90,8 +90,8 @@ const claimHistory = [
   }
 ];
 
-// Test wallet address
-const TEST_WALLET_ADDRESS = '0x0e0A0a14ac1E9fa088BBDdCb925c47d0ba5Ccfa1';
+// Test wallet address - updated to match scanner transactions
+const TEST_WALLET_ADDRESS = '0xa7b84453a22AdAdC015CFd3ec5104e9C43BA6224';
 
 export default function Activity() {
   const [selectedClaims, setSelectedClaims] = useState<string[]>([]);
@@ -114,7 +114,9 @@ export default function Activity() {
   const pendingTransactions = transactionsData?.transactions.filter(tx => !tx.processed && parseFloat(tx.cashbackAmount) > 0) || [];
   const claimedTransactions = transactionsData?.transactions.filter(tx => tx.processed) || [];
   
-  const totalPending = pendingTransactions.reduce((sum, tx) => sum + parseFloat(tx.cashbackAmount), 0);
+  // Use wallet balance for accurate cashback amount
+  const totalPending = walletBalance?.cashbackBalance ? parseFloat(walletBalance.cashbackBalance) : 
+    pendingTransactions.reduce((sum, tx) => sum + parseFloat(tx.cashbackAmount), 0);
   const totalClaimed = claimedTransactions.reduce((sum, tx) => sum + parseFloat(tx.cashbackAmount), 0);
 
   const handleSingleClaim = async (claimId: any, amount?: string) => {
@@ -296,11 +298,11 @@ export default function Activity() {
       <div className="grid grid-cols-2 gap-4">
         <Card className="bg-gradient-sonic-primary p-4 text-white">
           <div>
-            <p className="text-sm text-white/80">Total Pending</p>
+            <p className="text-sm text-white/80">Wallet Balance</p>
             <p className="font-bold text-2xl text-white">
-              {isConnected && isOnSonicNetwork ? balanceFormatted : totalPending.toFixed(2)} S
+              {isConnected && isOnSonicNetwork ? balanceFormatted : (walletBalance?.cashbackBalance || '0.00')} S
             </p>
-            <p className="text-xs text-white/60">{pendingClaims.length} claims</p>
+            <p className="text-xs text-white/60">{pendingTransactions.length} pending txs</p>
           </div>
         </Card>
         
@@ -308,7 +310,7 @@ export default function Activity() {
           <div>
             <p className="text-sm text-white/80">Total Claimed</p>
             <p className="font-bold text-2xl text-white">{totalClaimed.toFixed(2)} S</p>
-            <p className="text-xs text-white/60">{claimHistory.length} claims</p>
+            <p className="text-xs text-white/60">{claimedTransactions.length} processed</p>
           </div>
         </Card>
       </div>
@@ -362,12 +364,34 @@ export default function Activity() {
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-semibold">Pending Claims</h3>
               <Badge className="bg-yellow-500/20 text-yellow-300 border-yellow-500/30">
-                {pendingClaims.length} pending
+                {pendingTransactions.length} pending
               </Badge>
             </div>
-            {pendingClaims.map((claim) => (
-              <ClaimCard key={claim.id} claim={claim} isPending={true} />
-            ))}
+            {pendingTransactions.length > 0 ? (
+              pendingTransactions.map((tx) => (
+                <Card key={tx.hash} className="bg-gradient-sonic-primary p-5 text-white">
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <span className="font-semibold">{tx.dexName}</span>
+                      <span className="font-bold">{tx.cashbackAmount} S</span>
+                    </div>
+                    <div className="text-sm text-white/70">
+                      <p>Hash: {tx.hash.slice(0, 20)}...</p>
+                      <p>Block: {tx.blockNumber}</p>
+                    </div>
+                    <Button 
+                      onClick={() => handleSingleClaim(tx.hash, tx.cashbackAmount)}
+                      className="w-full bg-white text-blue-900 hover:bg-white/90"
+                      disabled={parseFloat(tx.cashbackAmount) < 10}
+                    >
+                      {parseFloat(tx.cashbackAmount) < 10 ? 'Min 10 S to claim' : 'Claim'}
+                    </Button>
+                  </div>
+                </Card>
+              ))
+            ) : (
+              <p className="text-center text-muted-foreground">No pending transactions</p>
+            )}
           </div>
         </TabsContent>
 
@@ -376,12 +400,28 @@ export default function Activity() {
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-semibold">Claim History</h3>
               <Badge className="bg-green-500/20 text-green-300 border-green-500/30">
-                {claimHistory.length} claimed
+                {claimedTransactions.length} claimed
               </Badge>
             </div>
-            {claimHistory.map((claim) => (
-              <ClaimCard key={claim.id} claim={claim} isPending={false} />
-            ))}
+            {claimedTransactions.length > 0 ? (
+              claimedTransactions.map((tx) => (
+                <Card key={tx.hash} className="bg-gradient-sonic-primary p-5 text-white">
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <span className="font-semibold">{tx.dexName}</span>
+                      <span className="font-bold text-green-400">{tx.cashbackAmount} S ✓</span>
+                    </div>
+                    <div className="text-sm text-white/70">
+                      <p>Hash: {tx.hash.slice(0, 20)}...</p>
+                      <p>Treasury TX: {tx.treasuryTxHash?.slice(0, 20)}...</p>
+                      <p>Processed: {new Date(tx.processedAt).toLocaleString()}</p>
+                    </div>
+                  </div>
+                </Card>
+              ))
+            ) : (
+              <p className="text-center text-muted-foreground">No claimed transactions</p>
+            )}
           </div>
         </TabsContent>
       </Tabs>
