@@ -119,36 +119,75 @@ export const useCashback = () => {
     setIsClaimPending(true);
 
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001'}/api/claim/process`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          userAddress: address,
-          amount: cashbackData.balanceFormatted
-        }),
+      const feeManagerContract = new ethers.Contract(CONTRACTS.FEE_MANAGER, FEE_MANAGER_ABI, signer);
+      
+      const balanceWei = ethers.parseEther(cashbackData.balanceFormatted);
+      const feeWei = await feeManagerContract.calculateFee(balanceWei);
+      
+      console.log('Claiming:', {
+        amount: cashbackData.balanceFormatted,
+        fee: ethers.formatEther(feeWei),
+        userAddress: address,
+        feeManagerAddress: CONTRACTS.FEE_MANAGER
+      });
+      
+      const gasEstimate = await feeManagerContract.processClaim.estimateGas(address, balanceWei, { value: feeWei });
+      const gasLimit = gasEstimate * 120n / 100n;
+
+      console.log('Sending transaction with:', {
+        gasLimit: gasLimit.toString(),
+        value: ethers.formatEther(feeWei),
+        to: CONTRACTS.FEE_MANAGER
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Claim request failed');
-      }
-
-      const result = await response.json();
+      const tx = await feeManagerContract.processClaim(address, balanceWei, { 
+        value: feeWei, 
+        gasLimit 
+      });
+      
+      console.log('Transaction hash:', tx.hash);
+      console.log('Transaction details:', {
+        hash: tx.hash,
+        from: tx.from,
+        to: tx.to,
+        value: ethers.formatEther(tx.value || '0'),
+        gasLimit: tx.gasLimit?.toString(),
+        gasPrice: tx.gasPrice?.toString()
+      });
       
       toast({
-        title: "Claim Successful!",
-        description: `Successfully claimed ${result.data.netAmount} S (after fee of ${result.data.feeAmount} S)`,
+        title: "Transaction Submitted",
+        description: `Transaction hash: ${tx.hash.slice(0, 10)}...${tx.hash.slice(-8)}`,
       });
 
-      await fetchCashbackData();
+      const receipt = await tx.wait();
+      
+      if (receipt.status === 1) {
+        const feeAmount = ethers.formatEther(feeWei);
+        const netAmount = (parseFloat(cashbackData.balanceFormatted) - parseFloat(feeAmount)).toFixed(4);
+        
+        toast({
+          title: "Claim Successful!",
+          description: `Successfully claimed ${netAmount} S (after fee of ${feeAmount} S). Tx: ${tx.hash.slice(0, 10)}...`,
+        });
+
+        await fetchCashbackData();
+      } else {
+        throw new Error('Transaction failed');
+      }
 
     } catch (error: any) {
       console.error('Claim error:', error);
       
-      let errorMessage = 'Claim failed';
-      if (error.message) {
+      let errorMessage = 'Claim transaction failed';
+      
+      if (error.code === 'ACTION_REJECTED' || error.code === 4001) {
+        errorMessage = 'Transaction was cancelled by user';
+      } else if (error.message?.includes('insufficient funds')) {
+        errorMessage = 'Insufficient funds to pay transaction fee';
+      } else if (error.message?.includes('user rejected')) {
+        errorMessage = 'Transaction was rejected by user';
+      } else if (error.message) {
         errorMessage = error.message;
       }
 
