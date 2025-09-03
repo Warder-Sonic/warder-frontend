@@ -22,7 +22,13 @@ export const SONIC_TESTNET = {
     "function cashbackBalances(address) external view returns (uint256)",
     "function totalCashbackHeld() external view returns (uint256)",
     "function creditCashback(address _user, uint256 _amount) external",
+    "function claimCashback() external",
+    "function minimumClaimAmount() external view returns (uint256)",
+    "function claimFeeRate() external view returns (uint256)",
+    "function canClaim(address _user) external view returns (bool)",
+    "function calculateClaimFee(address _user) external view returns (uint256 fee, uint256 netAmount)",
     "event CashbackCredited(address indexed user, uint256 amount)",
+    "event CashbackClaimed(address indexed user, uint256 amount, uint256 fee)",
   ] as const;
 
   export const FEE_MANAGER_ABI = [

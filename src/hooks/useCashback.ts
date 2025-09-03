@@ -54,21 +54,19 @@ export const useCashback = () => {
       const balance = await contract.cashbackBalances(address);
       const balanceFormatted = ethers.formatEther(balance);
 
-      const minimumClaimAmount = 0.1;
-      const canClaimResult = parseFloat(balanceFormatted) >= minimumClaimAmount;
+      const canClaimResult = await contract.canClaim(address);
+      const minimumClaimAmount = await contract.minimumClaimAmount();
+      const feeRate = await contract.claimFeeRate();
       
-      const feeManager = new ethers.Contract(CONTRACTS.FEE_MANAGER, FEE_MANAGER_ABI, provider);
       let estimatedFee = '0';
       let estimatedNetAmount = balanceFormatted;
-      let feeRatePercent = 0;
+      let feeRatePercent = Number(feeRate);
       
       if (canClaimResult && parseFloat(balanceFormatted) > 0) {
         try {
-          const balanceWei = ethers.parseEther(balanceFormatted);
-          const feeWei = await feeManager.calculateFee(balanceWei);
-          estimatedFee = ethers.formatEther(feeWei);
-          const netAmount = balanceWei - feeWei;
-          estimatedNetAmount = ethers.formatEther(netAmount);
+          const feeData = await contract.calculateClaimFee(address);
+          estimatedFee = ethers.formatEther(feeData[0]);
+          estimatedNetAmount = ethers.formatEther(feeData[1]);
           feeRatePercent = parseFloat(estimatedFee) / parseFloat(balanceFormatted) * 100;
         } catch (feeError) {
           console.warn('Could not calculate fee:', feeError);
@@ -79,7 +77,7 @@ export const useCashback = () => {
         balance: balance.toString(),
         balanceFormatted,
         canClaim: canClaimResult,
-        minimumClaimAmount: minimumClaimAmount.toString(),
+        minimumClaimAmount: ethers.formatEther(minimumClaimAmount),
         feeRate: feeRatePercent,
         estimatedFee,
         estimatedNetAmount,
@@ -119,29 +117,18 @@ export const useCashback = () => {
     setIsClaimPending(true);
 
     try {
-      const feeManagerContract = new ethers.Contract(CONTRACTS.FEE_MANAGER, FEE_MANAGER_ABI, signer);
+      const walletContract = new ethers.Contract(CONTRACTS.WARDER_WALLET, WARDER_WALLET_ABI, signer);
       
-      const balanceWei = ethers.parseEther(cashbackData.balanceFormatted);
-      const feeWei = await feeManagerContract.calculateFee(balanceWei);
-      
-      console.log('Claiming:', {
+      console.log('Claiming cashback:', {
         amount: cashbackData.balanceFormatted,
-        fee: ethers.formatEther(feeWei),
         userAddress: address,
-        feeManagerAddress: CONTRACTS.FEE_MANAGER
+        walletContractAddress: CONTRACTS.WARDER_WALLET
       });
       
-      const gasEstimate = await feeManagerContract.processClaim.estimateGas(address, balanceWei, { value: feeWei });
+      const gasEstimate = await walletContract.claimCashback.estimateGas();
       const gasLimit = gasEstimate * 120n / 100n;
 
-      console.log('Sending transaction with:', {
-        gasLimit: gasLimit.toString(),
-        value: ethers.formatEther(feeWei),
-        to: CONTRACTS.FEE_MANAGER
-      });
-
-      const tx = await feeManagerContract.processClaim(address, balanceWei, { 
-        value: feeWei, 
+      const tx = await walletContract.claimCashback({ 
         gasLimit 
       });
       
@@ -163,12 +150,9 @@ export const useCashback = () => {
       const receipt = await tx.wait();
       
       if (receipt.status === 1) {
-        const feeAmount = ethers.formatEther(feeWei);
-        const netAmount = (parseFloat(cashbackData.balanceFormatted) - parseFloat(feeAmount)).toFixed(4);
-        
         toast({
           title: "Claim Successful!",
-          description: `Successfully claimed ${netAmount} S (after fee of ${feeAmount} S). Tx: ${tx.hash.slice(0, 10)}...`,
+          description: `Successfully claimed ${cashbackData.estimatedNetAmount} S. Tx: ${tx.hash.slice(0, 10)}...`,
         });
 
         await fetchCashbackData();
