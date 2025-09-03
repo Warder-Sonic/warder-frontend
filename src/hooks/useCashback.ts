@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { ethers } from 'ethers';
 import { useWallet } from './useWallet';
-import { useTokenApproval } from './useTokenApproval';
 import { CONTRACTS, WARDER_WALLET_ABI, FEE_MANAGER_ABI } from '@/lib/contracts';
 import { useToast } from './use-toast';
 
@@ -20,7 +19,6 @@ interface CashbackData {
 export const useCashback = () => {
   const { provider, signer, address, isConnected, isOnSonicNetwork } = useWallet();
   const { toast } = useToast();
-  const { isApproved, approveToken, isApproving } = useTokenApproval();
   const [cashbackData, setCashbackData] = useState<CashbackData>({
     balance: '0',
     balanceFormatted: '0.00',
@@ -33,7 +31,6 @@ export const useCashback = () => {
     error: null,
   });
   const [isClaimPending, setIsClaimPending] = useState(false);
-  console.log("Frontend reading balance for address:", address);
 
   // Create contract instance
   const getContract = () => {
@@ -54,14 +51,8 @@ export const useCashback = () => {
       const contract = getContract();
       if (!contract) throw new Error('Contract not available');
 
-      console.log('Fetching balance for address:', address);
-      console.log('Contract address:', CONTRACTS.WARDER_WALLET);
-
       const balance = await contract.cashbackBalances(address);
-      console.log('Raw balance from contract:', balance.toString());
-      
       const balanceFormatted = ethers.formatEther(balance);
-      console.log('Formatted balance:', balanceFormatted);
 
       const minimumClaimAmount = 0.1;
       const canClaimResult = parseFloat(balanceFormatted) >= minimumClaimAmount;
@@ -107,7 +98,7 @@ export const useCashback = () => {
   };
 
   const claimCashback = async () => {
-    if (!signer || !address || !isConnected || !isOnSonicNetwork) {
+    if (!address || !isConnected || !isOnSonicNetwork) {
       toast({
         title: "Connection Required",
         description: "Please connect your wallet and switch to Sonic network",
@@ -125,63 +116,40 @@ export const useCashback = () => {
       return;
     }
 
-    if (!isApproved) {
-      toast({
-        title: "Token Approval Required",
-        description: "Please approve S token spending first",
-        variant: "destructive"
-      });
-      const approvalSuccess = await approveToken();
-      if (!approvalSuccess) {
-        return;
-      }
-    }
-
     setIsClaimPending(true);
 
     try {
-      const feeManagerContract = new ethers.Contract(CONTRACTS.FEE_MANAGER, FEE_MANAGER_ABI, signer);
-      
-      const balanceWei = ethers.parseEther(cashbackData.balanceFormatted);
-      const feeWei = await feeManagerContract.calculateFee(balanceWei);
-      
-      const gasEstimate = await feeManagerContract.processClaim.estimateGas(address, balanceWei, { value: feeWei });
-      const gasLimit = gasEstimate * 120n / 100n;
-
-      const tx = await feeManagerContract.processClaim(address, balanceWei, { 
-        value: feeWei, 
-        gasLimit 
+      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001'}/api/claim/process`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userAddress: address,
+          amount: cashbackData.balanceFormatted
+        }),
       });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Claim request failed');
+      }
+
+      const result = await response.json();
       
       toast({
-        title: "Transaction Submitted",
-        description: "Your claim transaction has been submitted to the network",
+        title: "Claim Successful!",
+        description: `Successfully claimed ${result.data.netAmount} S (after fee of ${result.data.feeAmount} S)`,
       });
 
-      const receipt = await tx.wait();
-      
-      if (receipt.status === 1) {
-        toast({
-          title: "Claim Successful!",
-          description: `Successfully claimed ${cashbackData.estimatedNetAmount} S (after ${cashbackData.feeRate.toFixed(1)}% fee)`,
-        });
-
-        await fetchCashbackData();
-      } else {
-        throw new Error('Transaction failed');
-      }
+      await fetchCashbackData();
 
     } catch (error: any) {
       console.error('Claim error:', error);
       
-      let errorMessage = 'Claim transaction failed';
-      
-      if (error.code === 'ACTION_REJECTED') {
-        errorMessage = 'Transaction was cancelled by user';
-      } else if (error.message?.includes('Below minimum claim amount')) {
-        errorMessage = `Minimum claim amount is ${cashbackData.minimumClaimAmount} S`;
-      } else if (error.message?.includes('Insufficient contract balance')) {
-        errorMessage = 'Contract has insufficient balance. Please try again later.';
+      let errorMessage = 'Claim failed';
+      if (error.message) {
+        errorMessage = error.message;
       }
 
       toast({
@@ -210,8 +178,5 @@ export const useCashback = () => {
     claimCashback,
     isClaimPending,
     refreshData: fetchCashbackData,
-    isApproved,
-    approveToken,
-    isApproving,
   };
 };

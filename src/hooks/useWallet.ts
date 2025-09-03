@@ -326,9 +326,31 @@ export const useWallet = () => {
     }
   };
 
-  const handleChainChanged = () => {
-    // Refresh the page when chain changes to avoid issues
-    window.location.reload();
+  const handleChainChanged = async (chainIdHex: string) => {
+    try {
+      const chainId = parseInt(chainIdHex, 16);
+      console.log('Chain changed to:', chainId);
+      
+      if (wallet.walletType) {
+        const walletInfo = getWalletByName(wallet.walletType);
+        if (walletInfo) {
+          const provider = new ethers.BrowserProvider(walletInfo.provider);
+          const signer = await provider.getSigner();
+          const network = await provider.getNetwork();
+          
+          setWallet(prev => ({
+            ...prev,
+            provider,
+            signer,
+            chainId: Number(network.chainId),
+          }));
+          
+          console.log('Updated wallet state with new chainId:', Number(network.chainId));
+        }
+      }
+    } catch (error) {
+      console.error('Error handling chain change:', error);
+    }
   };
 
   const isOnSonicNetwork = wallet.chainId === SONIC_TESTNET.chainId;
