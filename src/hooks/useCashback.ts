@@ -31,6 +31,7 @@ export const useCashback = () => {
     error: null,
   });
   const [isClaimPending, setIsClaimPending] = useState(false);
+  console.log("Frontend reading balance for address:", address);
 
   // Create contract instance
   const getContract = () => {
